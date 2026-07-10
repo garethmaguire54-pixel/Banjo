@@ -53,6 +53,20 @@
 
   .pastebox{display:none; margin:8px 0 0}
   .pastebox.show{display:block}
+
+  .listenbox{display:none; margin:14px 0 0; border:1.5px solid var(--line); border-radius:12px; background:var(--cell); padding:14px}
+  .listenbox.show{display:block}
+  .listenrow{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .listenmeter{flex:1; min-width:80px; height:10px; background:#e2d3ac; border-radius:6px; overflow:hidden}
+  .listenmeterfill{height:100%; width:0%; background:var(--ox); transition:width .06s linear}
+  .listentimer{font-family:"Fraunces",serif; font-weight:600; color:var(--ink2); min-width:34px; text-align:right}
+  .listenresults{margin-top:12px; display:flex; flex-direction:column; gap:8px}
+  .matchcard{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--paper);
+    cursor:pointer; transition:background .12s}
+  .matchcard:hover{background:#f6e2b0}
+  .matchcard .mtitle{font-weight:600; color:var(--ink)}
+  .matchcard .mconf{font-family:"Fraunces",serif; color:var(--ox); font-size:13px; white-space:nowrap}
   textarea{width:100%; min-height:120px; border:1.5px solid var(--line); border-radius:10px;
     background:var(--cell); padding:12px; font-size:13.5px; resize:vertical; color:var(--ink)}
   .hint{font-size:13px; color:var(--ink2); font-style:italic; margin-top:6px}
@@ -138,6 +152,7 @@
     <button class="btn ghost" id="pasteToggle">Paste ABC ▾</button>
     <button class="btn ghost" id="omrBtn">📷 From photo</button>
     <input type="file" id="omrFile" accept="image/*" style="display:none">
+    <button class="btn ghost" id="listenBtn">🎙 Listen for a tune</button>
     <span style="flex:1"></span>
     <select id="posMode" title="Fingering">
       <option value="first">First position</option>
@@ -156,6 +171,16 @@
       <span class="hint">Grab any tune's ABC from <a href="https://thesession.org" target="_blank" rel="noopener">thesession.org</a> (each tune page → "ABC"). Handles notes, octaves, accidentals, durations, repeats. Grace notes &amp; chords are simplified.</span></div>
     <div class="hint" id="omrStatus" style="margin-top:8px"></div>
     <div class="err" id="abcErr"></div>
+  </div>
+
+  <div class="listenbox" id="listenBox">
+    <div class="listenrow">
+      <button class="btn amber" id="listenRecordBtn">🎙 Start listening</button>
+      <div class="listenmeter"><div class="listenmeterfill" id="listenMeterFill"></div></div>
+      <div class="listentimer" id="listenTimer">10s</div>
+    </div>
+    <div class="hint" id="listenStatus">Hold the banjo close to the mic and play the tune through once — about 10 seconds, one clean pass is plenty.</div>
+    <div class="listenresults" id="listenResults"></div>
   </div>
 
   <div class="tunehead">
@@ -521,7 +546,7 @@ function updateTempoLabel(){const bpm=+$("tempo").value; $("tempoVal").textConte
 function syncScope(){ document.querySelectorAll("#scopeSeg button").forEach(b=>b.classList.toggle("sel",b.dataset.scope===scope)); }
 
 $("tuneSelect").onchange=e=>{const t=TUNES[e.target.value]; load(t.abc,t); if(playing)stopLoop();};
-$("pasteToggle").onclick=()=>$("pasteBox").classList.toggle("show");
+$("pasteToggle").onclick=()=>{ $("pasteBox").classList.toggle("show"); $("listenBox").classList.remove("show"); };
 $("loadAbc").onclick=()=>{ const v=$("abcInput").value.trim(); if(v){load(v,null); if(playing)stopLoop();} };
 
 /* ---------- PHOTO -> ABC (vision OMR) ---------- */
@@ -578,6 +603,188 @@ function shrinkImage(file, maxSide, quality){
     img.src=url;
   });
 }
+/* ---------- LISTEN FOR A TUNE (Tunepal: audio -> notes -> corpus match) ----------
+   Client side: record mic audio, run frame-by-frame pitch detection (autocorrelation),
+   spell each frequency as a scale-degree letter (JS port of Tunepal's PitchSpeller —
+   same fixed D-major-ish reference ladder the tune corpus was indexed with), quantise
+   note durations to a fuzzy "quaver length", and build a letter string like the one
+   in the corpus's search_key. That string goes to /api/identify, which fuzzy-matches
+   it against Tunepal's 67k-tune corpus and hands back candidates. */
+const RECORD_SECONDS = 10;
+const TP_RATIO = Math.pow(2, 1/12);
+const TP_FUNDAMENTAL = 293.66; // D4 — Tunepal's default reference pitch
+const TP_NOTE_NAMES = ["D","E","F","G","A","B","C","C","D","E","F","G","A","B","C","C","D","E","F","G","A","B","C","C","D","E","F","G","A","B","C","C","D"];
+function buildKnownFrequencies(){
+  const freqs=[TP_FUNDAMENTAL/Math.pow(TP_RATIO,12)];
+  const wholeToneSteps=new Set([1,2,4,5]);
+  for(let i=1;i<33;i++){
+    const whole = wholeToneSteps.has(i%8);
+    freqs.push(freqs[i-1]*TP_RATIO*(whole?TP_RATIO:1));
+  }
+  return freqs;
+}
+const TP_KNOWN_FREQS = buildKnownFrequencies();
+function spellFrequency(freq){
+  if(freq<TP_KNOWN_FREQS[0] || freq>TP_KNOWN_FREQS[32]) return "Z";
+  let best=0, bestDiff=Infinity;
+  for(let j=0;j<33;j++){ const d=Math.abs(freq-TP_KNOWN_FREQS[j]); if(d<bestDiff){bestDiff=d;best=j;} }
+  return TP_NOTE_NAMES[best];
+}
+// Autocorrelation pitch detector (ACF2+ style), lag range bounded to ~80-2000Hz so it
+// stays fast enough to run on ~400 frames of a 10s clip without blocking the tab.
+function detectPitch(buf, sampleRate){
+  const SIZE=buf.length;
+  let rms=0; for(let i=0;i<SIZE;i++) rms+=buf[i]*buf[i];
+  rms=Math.sqrt(rms/SIZE);
+  if(rms<0.008) return -1; // near-silent frame
+  const minLag=Math.floor(sampleRate/2000), maxLag=Math.min(SIZE-1,Math.ceil(sampleRate/70));
+  let bestLag=-1, bestVal=0;
+  for(let lag=minLag;lag<=maxLag;lag++){
+    let sum=0; const n=SIZE-lag;
+    for(let i=0;i<n;i++) sum+=buf[i]*buf[i+lag];
+    if(sum>bestVal){bestVal=sum;bestLag=lag;}
+  }
+  if(bestLag<=minLag) return -1;
+  // parabolic interpolation around the peak for a touch of sub-sample accuracy
+  const corrAt=lag=>{ let s=0; const n=SIZE-lag; for(let i=0;i<n;i++) s+=buf[i]*buf[i+lag]; return s; };
+  const y1=corrAt(bestLag-1), y2=bestVal, y3=corrAt(bestLag+1);
+  const denom=(y1-2*y2+y3);
+  const shift = denom? 0.5*(y1-y3)/denom : 0;
+  const refinedLag=bestLag+Math.max(-1,Math.min(1,shift));
+  return sampleRate/refinedLag;
+}
+let listenStream=null, listenCtx=null, listenChunks=[], listenSampleRate=44100, listenTimerId=null, listenRecording=false;
+async function startListening(){
+  const status=$("listenStatus"), btn=$("listenRecordBtn"), timerEl=$("listenTimer");
+  $("listenResults").innerHTML="";
+  try{
+    listenStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+  }catch(e){ status.style.color="var(--ox)"; status.textContent="Couldn't access the microphone: "+e.message; return; }
+  listenCtx = new (window.AudioContext||window.webkitAudioContext)();
+  listenSampleRate = listenCtx.sampleRate;
+  const src = listenCtx.createMediaStreamSource(listenStream);
+  const proc = listenCtx.createScriptProcessor(4096,1,1);
+  listenChunks=[]; listenRecording=true;
+  proc.onaudioprocess=e=>{
+    if(!listenRecording) return;
+    const data=e.inputBuffer.getChannelData(0);
+    listenChunks.push(new Float32Array(data));
+    let rms=0; for(let i=0;i<data.length;i++) rms+=data[i]*data[i];
+    rms=Math.sqrt(rms/data.length);
+    $("listenMeterFill").style.width=Math.min(100,rms*400)+"%";
+  };
+  src.connect(proc); proc.connect(listenCtx.destination);
+  listenCtx._proc=proc; listenCtx._src=src;
+  btn.textContent="■ Stop"; btn.classList.add("stop");
+  status.style.color="var(--ink2)"; status.textContent="Listening… play the tune through once.";
+  let remaining=RECORD_SECONDS; timerEl.textContent=remaining+"s";
+  listenTimerId=setInterval(()=>{
+    remaining--; timerEl.textContent=Math.max(0,remaining)+"s";
+    if(remaining<=0) stopListening();
+  },1000);
+}
+function stopListening(){
+  if(!listenRecording) return;
+  listenRecording=false;
+  clearInterval(listenTimerId);
+  try{ listenCtx._proc.disconnect(); listenCtx._src.disconnect(); }catch(e){}
+  listenStream.getTracks().forEach(t=>t.stop());
+  const btn=$("listenRecordBtn"); btn.textContent="🎙 Start listening"; btn.classList.remove("stop");
+  $("listenMeterFill").style.width="0%";
+  const totalSamples = listenChunks.reduce((s,c)=>s+c.length,0);
+  const signal = new Float32Array(totalSamples);
+  let off=0; for(const c of listenChunks){ signal.set(c,off); off+=c.length; }
+  const sr = listenSampleRate;
+  listenCtx.close();
+  analyzeAndIdentify(signal, sr);
+}
+async function analyzeAndIdentify(signal, sampleRate){
+  const status=$("listenStatus");
+  status.style.color="var(--ink2)"; status.textContent="Reading the pitches…";
+  const FRAME=Math.round(sampleRate*0.093), HOP=Math.round(FRAME*0.25);
+  const window_=new Float32Array(FRAME);
+  for(let i=0;i<FRAME;i++) window_[i]=0.5-0.5*Math.cos(2*Math.PI*i/(FRAME-1)); // Hann
+  const notes=[]; let lastSpelling=null; let zFrames=0, totalFrames=0;
+  const numHops = Math.max(0, Math.floor((signal.length-FRAME)/HOP));
+  for(let h=0; h<numHops; h++){
+    if(h%20===0) await new Promise(r=>setTimeout(r,0)); // keep the UI responsive
+    const start=h*HOP;
+    const frame=new Float32Array(FRAME);
+    for(let i=0;i<FRAME;i++) frame[i]=signal[start+i]*window_[i];
+    const freq=detectPitch(frame, sampleRate);
+    const spelling = freq>0 ? spellFrequency(freq) : "Z";
+    totalFrames++; if(spelling==="Z") zFrames++;
+    if(spelling!==lastSpelling){
+      notes.push({spelling, onset: start/sampleRate});
+      lastSpelling=spelling;
+    }
+  }
+  if(totalFrames===0 || zFrames/totalFrames>0.6){
+    status.style.color="var(--ox)";
+    status.textContent="Mostly quiet — try again a bit closer to the mic, and start playing right away.";
+    return;
+  }
+  const totalSeconds = signal.length/sampleRate;
+  for(let i=0;i<notes.length-1;i++) notes[i].duration = notes[i+1].onset-notes[i].onset;
+  notes[notes.length-1].duration = totalSeconds - notes[notes.length-1].onset;
+  // fuzzy quaver-length estimate: histogram of non-silent note durations, pick the busiest bin
+  const durs = notes.filter(n=>n.spelling!=="Z" && n.duration>0.05 && n.duration<1.2).map(n=>n.duration);
+  let quaver=0.2;
+  if(durs.length){
+    const binW=0.02, bins=new Map();
+    for(const d of durs){ const b=Math.round(d/binW); bins.set(b,(bins.get(b)||0)+1); }
+    let bestBin=null, bestCount=-1;
+    for(const [b,c] of bins){ const weight=c+((bins.get(b-1)||0)+(bins.get(b+1)||0))*0.5; if(weight>bestCount){bestCount=weight;bestBin=b;} }
+    quaver = Math.max(0.06, bestBin*binW);
+  }
+  let transcription="";
+  for(const n of notes){
+    if(n.spelling==="Z") continue;
+    const qq=Math.max(1,Math.min(8,Math.round(n.duration/quaver)));
+    transcription += n.spelling.repeat(qq);
+  }
+  if(transcription.length<6){
+    status.style.color="var(--ox)";
+    status.textContent="Couldn't pick out enough distinct notes — try playing a touch slower and more separated.";
+    return;
+  }
+  status.textContent="Matching against the tune index…";
+  try{
+    const resp=await fetch("/api/identify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transcription})});
+    const ct=resp.headers.get("content-type")||"";
+    if(!ct.includes("application/json")){
+      const head=(await resp.text()).slice(0,80);
+      throw new Error(`/api/identify returned ${resp.status} (not JSON). [${head}]`);
+    }
+    const data=await resp.json();
+    if(data.error) throw new Error(data.error);
+    renderListenResults(data.matches||[]);
+    status.style.color="var(--ox)";
+    status.innerHTML = (data.matches&&data.matches.length)
+      ? "<b>Best guesses below</b> — Tunepal-style matching is fuzzy by nature, especially over one pass. Tap one to load it, then check it against what you played."
+      : "No close matches found. Try a cleaner, slower pass.";
+  }catch(e){ status.style.color="var(--ox)"; status.textContent="Couldn't identify: "+e.message; }
+}
+function renderListenResults(matches){
+  const el=$("listenResults"); el.innerHTML="";
+  matches.forEach(m=>{
+    const card=document.createElement("div");
+    card.className="matchcard";
+    card.innerHTML = `<span class="mtitle">${m.title}</span><span class="mconf">${Math.round(m.confidence*100)}% match</span>`;
+    card.onclick=()=>{
+      load(m.notation, {title:m.title, meta:"via Tunepal · "+Math.round(m.confidence*100)+"% match — verify before you rely on it", starter:false});
+      if(playing) stopLoop();
+      $("listenStatus").innerHTML = `Loaded <b>${m.title}</b>. OMR-style matching can mishear notes — check it against what you played.`;
+    };
+    el.appendChild(card);
+  });
+}
+$("listenBtn").onclick=()=>{
+  $("listenBox").classList.toggle("show");
+  $("pasteBox").classList.remove("show");
+};
+$("listenRecordBtn").onclick=()=>{ listenRecording? stopListening() : startListening(); };
+
 $("posMode").onchange=()=>{ if(tune){frets=mapFrets(tune.notes,$("posMode").value); renderTab();} };
 $("phraseLen").onchange=()=>{ if(tune){buildPhrases(); curPhrase=0; renderTab(); updatePos();} };
 $("prevPhrase").onclick=()=>{ curPhrase=Math.max(0,curPhrase-1); renderTab(); updatePos(); if(playing){stopLoop();} };
