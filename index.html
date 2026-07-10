@@ -1,0 +1,592 @@
+<!-- Bothán — Irish tenor banjo woodshed (GDAE) -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bothán — Irish Tenor Banjo Woodshed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+<style>
+  :root{
+    --paper:#f2e7cf; --paper2:#e9d0b8; --ink:#241a10; --ink2:#5a4a35;
+    --green:#1f3d2b; --green2:#2f5840; --amber:#c8852a; --ox:#933626;
+    --line:#b9a47e; --hi:#e7b34a; --cell:#fbf4e2;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Spectral",Georgia,serif; color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 80% -10%, #f7efda 0%, transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, #efe0bf 0%, transparent 55%),
+      var(--paper);
+    background-attachment:fixed;
+    min-height:100vh; line-height:1.5;
+  }
+  body::before{ /* paper grain */
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.05; z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative; z-index:1; max-width:980px; margin:0 auto; padding:34px 20px 80px}
+
+  header{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    border-bottom:2px solid var(--green); padding-bottom:14px; margin-bottom:6px}
+  .brand h1{font-family:"Fraunces",serif; font-weight:900; font-size:clamp(40px,8vw,72px);
+    line-height:.86; margin:0; color:var(--green); letter-spacing:-.01em}
+  .brand .sub{font-style:italic; color:var(--ink2); font-size:15px; margin-top:6px}
+  .tuning{font-family:"Fraunces",serif; font-weight:600; color:var(--amber); font-size:13px;
+    letter-spacing:.28em; text-transform:uppercase}
+
+  .bar-controls{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:22px 0 8px}
+  select,button,textarea{font-family:"Spectral",serif}
+  select{appearance:none; background:var(--cell); border:1.5px solid var(--line); color:var(--ink);
+    padding:9px 30px 9px 12px; border-radius:9px; font-size:15px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a4a35'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 11px center}
+  .btn{background:var(--green); color:var(--paper); border:none; padding:9px 16px; border-radius:9px;
+    font-size:15px; font-weight:600; cursor:pointer; transition:transform .08s, background .15s}
+  .btn:hover{background:var(--green2)} .btn:active{transform:translateY(1px)}
+  .btn.amber{background:var(--amber); color:#2a1a06} .btn.amber:hover{filter:brightness(1.06)}
+  .btn.ghost{background:transparent; color:var(--green); border:1.5px solid var(--green)}
+  .btn:disabled{opacity:.4; cursor:default}
+
+  .pastebox{display:none; margin:8px 0 0}
+  .pastebox.show{display:block}
+  textarea{width:100%; min-height:120px; border:1.5px solid var(--line); border-radius:10px;
+    background:var(--cell); padding:12px; font-size:13.5px; resize:vertical; color:var(--ink)}
+  .hint{font-size:13px; color:var(--ink2); font-style:italic; margin-top:6px}
+  .hint a{color:var(--ox)}
+
+  .tunehead{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:24px 0 4px}
+  .tunehead h2{font-family:"Fraunces",serif; font-size:30px; margin:0; color:var(--ink)}
+  .tunehead .meta{color:var(--ink2); font-style:italic}
+  .starter{font-size:12px; color:var(--ox); border:1px solid var(--ox); border-radius:20px; padding:2px 10px}
+
+  /* TAB — stacked, wrapping lines (no horizontal scroll) */
+  .tabscroll{border:2px solid var(--green); border-radius:14px; background:var(--cell);
+    padding:16px 14px; margin-top:10px; box-shadow:0 14px 30px -22px #000}
+  .tabrow{display:flex; flex-direction:column; gap:18px}
+  .tabline{display:flex; align-items:stretch}
+  .stringlabels{display:flex; flex-direction:column; justify-content:center; margin-right:8px; flex:0 0 22px;
+    font-family:"Fraunces",serif; font-weight:600; color:var(--green)}
+  .stringlabels .lane{height:24px; display:flex; align-items:center; font-size:13px; opacity:.7}
+  .barswrap{display:flex; flex:1; min-width:0}
+  .barcol{display:flex; border-right:1px dashed var(--line)}
+  .barcol.lastbar{border-right:none}
+  .notecol{display:flex; flex-direction:column; justify-content:center; padding:0 1px; flex:1 1 0; min-width:18px; max-width:54px}
+  .notecol .lane{height:24px; display:flex; align-items:center; justify-content:center;
+    border-top:1px solid #d9c9a3; font-variant-numeric:tabular-nums; font-size:14px; color:var(--ink)}
+  .notecol .lane:first-child{border-top:none}
+  .notecol.inphrase .lane{background:#f6e2b0}
+  .notecol.on .fretmark{background:var(--hi); color:#231400; border-radius:6px; font-weight:600;
+    box-shadow:0 0 0 2px var(--amber)}
+  .fretmark{min-width:18px; text-align:center; padding:1px 4px}
+
+  /* fretboard */
+  .neckwrap{margin-top:18px}
+  .neck{width:100%; height:118px; display:block}
+
+  /* practice */
+  .panel{margin-top:24px; background:linear-gradient(180deg,var(--green),#193322); color:var(--paper);
+    border-radius:16px; padding:20px; box-shadow:0 20px 40px -28px #000}
+  .panel h3{font-family:"Fraunces",serif; margin:0 0 14px; font-weight:600; font-size:18px;
+    letter-spacing:.02em; color:var(--hi)}
+  .prow{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+  .seg{display:flex; gap:0; border:1.5px solid rgba(255,255,255,.3); border-radius:9px; overflow:hidden}
+  .seg button{background:transparent; color:var(--paper); border:none; padding:8px 13px; cursor:pointer;
+    font-size:14px; font-weight:600}
+  .seg button.sel{background:var(--hi); color:#231400}
+  .navbtn{background:rgba(255,255,255,.1); color:var(--paper); border:1.5px solid rgba(255,255,255,.25);
+    border-radius:50%; width:38px; height:38px; font-size:16px; cursor:pointer}
+  .navbtn:hover{background:rgba(255,255,255,.2)}
+  .pos{font-family:"Fraunces",serif; font-size:15px; min-width:128px; text-align:center}
+  .tempo{flex:1; min-width:180px}
+  .tempo label{display:flex; justify-content:space-between; font-size:13px; opacity:.85; margin-bottom:4px}
+  input[type=range]{width:100%; accent-color:var(--hi)}
+  .bigplay{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:6px}
+  .playbtn{background:var(--hi); color:#231400; border:none; width:120px; padding:14px; border-radius:11px;
+    font-family:"Fraunces",serif; font-weight:600; font-size:18px; cursor:pointer}
+  .playbtn.stop{background:var(--ox); color:var(--paper)}
+  .reps{font-family:"Fraunces",serif; font-size:15px}
+  .reps b{font-size:30px; color:var(--hi); display:inline-block; min-width:30px}
+  .toggles{display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; font-size:14px}
+  .toggles label{display:flex; align-items:center; gap:7px; cursor:pointer}
+  .toggles input{accent-color:var(--hi); width:16px; height:16px}
+  .goalwrap{display:flex; align-items:center; gap:8px}
+  .goalwrap input[type=number]{width:54px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.3);
+    color:var(--paper); border-radius:7px; padding:5px; font-family:"Spectral",serif}
+  .goalbar{height:8px; background:rgba(255,255,255,.15); border-radius:6px; overflow:hidden; flex:1; min-width:120px}
+  .goalfill{height:100%; width:0; background:var(--hi); transition:width .3s}
+
+  footer{margin-top:30px; font-size:13px; color:var(--ink2); line-height:1.6; border-top:1px solid var(--line); padding-top:16px}
+  footer b{color:var(--green); font-family:"Fraunces",serif}
+  .err{color:var(--ox); font-style:italic; margin-top:8px}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Bothán</h1>
+      <div class="sub">the woodshed — learn a tune the way a teacher would walk you through it</div>
+    </div>
+    <div class="tuning">Tenor&nbsp;Banjo · G D A E</div>
+  </header>
+
+  <div class="bar-controls">
+    <select id="tuneSelect"></select>
+    <button class="btn ghost" id="pasteToggle">Paste ABC ▾</button>
+    <button class="btn ghost" id="omrBtn">📷 From photo</button>
+    <input type="file" id="omrFile" accept="image/*" style="display:none">
+    <span style="flex:1"></span>
+    <select id="posMode" title="Fingering">
+      <option value="first">First position</option>
+      <option value="neck">Whole neck</option>
+    </select>
+    <select id="phraseLen" title="Phrase size">
+      <option value="2">Phrase = 2 bars</option>
+      <option value="1">Phrase = 1 bar</option>
+      <option value="4">Phrase = 4 bars</option>
+    </select>
+  </div>
+
+  <div class="pastebox" id="pasteBox">
+    <textarea id="abcInput" spellcheck="false" placeholder="Paste an ABC tune here…"></textarea>
+    <div style="margin-top:8px"><button class="btn amber" id="loadAbc">Load tune</button>
+      <span class="hint">Grab any tune's ABC from <a href="https://thesession.org" target="_blank" rel="noopener">thesession.org</a> (each tune page → "ABC"). Handles notes, octaves, accidentals, durations, repeats. Grace notes &amp; chords are simplified.</span></div>
+    <div class="hint" id="omrStatus" style="margin-top:8px"></div>
+    <div class="err" id="abcErr"></div>
+  </div>
+
+  <div class="tunehead">
+    <h2 id="tuneTitle">—</h2>
+    <span class="meta" id="tuneMeta"></span>
+    <span class="starter" id="starterTag" style="display:none">starter setting · verify on The Session</span>
+  </div>
+
+  <div class="tabscroll">
+    <div class="tabrow" id="tabRow"></div>
+  </div>
+
+  <div class="neckwrap"><svg class="neck" id="neck" viewBox="0 0 900 118" preserveAspectRatio="none"></svg></div>
+
+  <div class="panel">
+    <h3>The woodshed</h3>
+    <div class="prow">
+      <button class="navbtn" id="prevPhrase">‹</button>
+      <div class="pos" id="posLabel">Phrase 1</div>
+      <button class="navbtn" id="nextPhrase">›</button>
+      <div class="seg" id="scopeSeg">
+        <button data-scope="phrase" class="sel">Phrase</button>
+        <button data-scope="part">Part</button>
+        <button data-scope="all">Whole tune</button>
+      </div>
+    </div>
+    <div class="prow">
+      <div class="tempo">
+        <label><span>Speed</span><span id="tempoVal">66 bpm · 55%</span></label>
+        <input type="range" id="tempo" min="30" max="160" value="66">
+      </div>
+    </div>
+    <div class="bigplay">
+      <button class="playbtn" id="play">▶ Loop</button>
+      <div class="reps">reps&nbsp; <b id="repCount">0</b></div>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="ramp"> Speed trainer <span style="opacity:.7">(+4 bpm every 3 reps)</span></label>
+      <label class="goalwrap"><input type="checkbox" id="dadMode"> Busy-dad goal:
+        <input type="number" id="goalReps" value="8" min="1" max="50">
+        <span class="goalbar"><span class="goalfill" id="goalFill"></span></span>
+      </label>
+    </div>
+  </div>
+
+  <footer>
+    <b>What this is.</b> A practice loop, not another notation viewer. Pick a phrase, slow it to a crawl, let it loop while you chase it on the banjo, and let the speed trainer nudge you up to session pace. The fretboard lights up so your hands learn the shape, not just your eyes.<br><br>
+    <b>Yours to build next.</b> Pull tunes live from The Session's JSON API · add an ornamentation engine (cuts, rolls, triplets injected into the tab) · spaced-repetition across your tune list so it surfaces the ones going rusty · save progress and turn it into a phone PWA for the 20 minutes after the kids are down.
+  </footer>
+</div>
+
+<script>
+/* ---------- TUNES (starter settings; paste canonical from thesession.org) ---------- */
+const TUNES = {
+  warmup: {title:"First-Position Warm-Up", meta:"D major · exercise", starter:false,
+    abc:`X:1\nL:1/8\nM:4/4\nK:Dmaj\nDEFG ABcd|dcBA GFED|DFAd fdAF|D2 D2 z4|`},
+  kesh: {title:"The Kesh Jig", meta:"jig · 6/8 · G major", starter:true,
+    abc:`X:1\nL:1/8\nM:6/8\nK:Gmaj\n|:G3 GAB|AGA BAB|GBd edd|edB dBA|G3 GAB|AGA BAB|GBd edB|AGF G3:|`},
+  egan: {title:"Egan's Polka", meta:"polka · 2/4 · D major", starter:true,
+    abc:`X:1\nL:1/8\nM:2/4\nK:Dmaj\n|:AB AF|EA AB|cd ec|dB B2|AB AF|EA AB|cd ec|d2 d2:|`}
+};
+
+/* ---------- ABC PARSER (subset) ---------- */
+const PC = {C:0,D:2,E:4,F:5,G:7,A:9,B:11};
+function keyMap(k){
+  k=(k||"").trim();
+  const sharps=["F","C","G","D","A","E","B"], flats=["B","E","A","D","G","C","F"];
+  const order={C:0,G:1,D:2,A:3,E:4,B:5,Fsharp:6, F:-1,Bb:-2,Eb:-3,Ab:-4,Db:-5};
+  let root=k.match(/^[A-G][b#]?/); root=root?root[0]:"C";
+  let mode=k.slice(root.length).toLowerCase();
+  // shift relative-minor/modal to major equivalent count
+  let n = {C:0,G:1,D:2,A:3,E:4,B:5,"F#":6,F:-1,"Bb":-2,"Eb":-3,"Ab":-4}[root] ?? 0;
+  if(mode.startsWith("m")&&!mode.startsWith("maj")) n-=3;          // minor
+  else if(mode.startsWith("dor")) n-=2;
+  else if(mode.startsWith("mix")) n-=1;
+  else if(mode.startsWith("phr")) n-=4;
+  else if(mode.startsWith("lyd")) n+=1;
+  const map={};
+  if(n>0) for(let i=0;i<n;i++) map[PC[sharps[i]]]=1;
+  if(n<0) for(let i=0;i<-n;i++) map[PC[flats[i]]]=-1;
+  return map;
+}
+function parseABC(abc){
+  const lines=abc.split(/\r?\n/);
+  let unit=0.5, meter="4/4", key="C", title="Tune", body=[];
+  for(const ln of lines){
+    const m=ln.match(/^([A-Za-z]):\s*(.*)$/);
+    if(m){const f=m[1],v=m[2].trim();
+      if(f==="L"){const p=v.split("/");unit=(+p[0])/(+(p[1]||1));}
+      else if(f==="M"){meter=v;}
+      else if(f==="K"){key=v;}
+      else if(f==="T"){title=v;}
+    } else if(ln.trim() && !/^%/.test(ln)) body.push(ln.trim());
+  }
+  const km=keyMap(key);
+  let s=body.join("");
+  s=s.replace(/!.*?!/g,"").replace(/".*?"/g,"").replace(/\{[^}]*\}/g,""); // decorations/chords/grace
+  const notes=[]; const bars=[]; let cur=[];
+  const measureAcc={}; // accidentals within a bar
+  let tupletLeft=0, tupletRatio=1;
+  let i=0;
+  function pushBar(){ if(cur.length){bars.push(cur);cur=[];} for(const k in measureAcc) delete measureAcc[k]; }
+  while(i<s.length){
+    const c=s[i];
+    if(c==="|"){ pushBar();
+      // skip repeat/ending decorations
+      while(i<s.length && /[|:\]\[0-9]/.test(s[i])) i++;
+      continue;
+    }
+    if(c===":"){i++;continue;}
+    if(c==="("){ // tuplet (3 (2 (4
+      const t=s.slice(i).match(/^\((\d)/);
+      if(t){tupletLeft=+t[1]; tupletRatio = (t[1]==="3")?2/3:(t[1]==="2")?3/2:(t[1]==="4")?3/4:1; i+=2; continue;}
+      i++; continue; // slur
+    }
+    if(/[A-Ga-gzZ\^_=]/.test(c)){
+      let acc=null;
+      while("^_=".includes(s[i])){ acc=(s[i]==="^"?(acc===1?2:1):s[i]==="_"?(acc===-1?-2:-1):0); i++; }
+      const L=s[i];
+      if(L==="z"||L==="Z"){ // rest
+        i++; let dur=readDur(); 
+        notes.push({rest:true,dur:dur*unit*tupletApply()});
+        if(tupletLeft>0)tupletLeft--;
+        cur.push(notes.length-1); continue;
+      }
+      if(!/[A-Ga-g]/.test(L)){ i++; continue; }
+      let semis;
+      const letter=L.toUpperCase();
+      let oct = (L>="a"&&L<="g")?1:0;
+      i++;
+      while(s[i]==="'"||s[i]===","){ oct += (s[i]==="'"?1:-1); i++; }
+      const pcKey=letter;
+      let alt;
+      if(acc!==null){ alt=acc; measureAcc[pcKey+oct]=acc; }
+      else if((pcKey+oct) in measureAcc){ alt=measureAcc[pcKey+oct]; }
+      else { alt = km[PC[letter]] ?? 0; }
+      semis = 60 + PC[letter] + alt + 12*oct;  // C4=60
+      let dur=readDur();
+      notes.push({rest:false,midi:semis,dur:dur*unit*tupletApply()});
+      if(tupletLeft>0)tupletLeft--;
+      cur.push(notes.length-1);
+      continue;
+    }
+    i++;
+  }
+  pushBar();
+  function readDur(){
+    let num="",den="";
+    while(/[0-9]/.test(s[i])){num+=s[i];i++;}
+    if(s[i]==="/"){ i++; if(s[i]==="/"){den="4";i++;} else { while(/[0-9]/.test(s[i])){den+=s[i];i++;} if(!den)den="2"; } }
+    let d = (num?+num:1)/(den?+den:1);
+    // broken rhythm
+    if(s[i]===">"){i++; d*=1.5; /* next halved handled crudely */}
+    else if(s[i]==="<"){i++; d*=0.5;}
+    return d;
+  }
+  function tupletApply(){ return tupletLeft>0?tupletRatio:1; }
+  return {title,meter,key,bars,notes};
+}
+
+/* ---------- FRETBOARD MAPPING (GDAE, Viterbi for low movement) ---------- */
+const OPEN=[55,62,69,76];          // G3 D4 A4 E5 — mandolin/tenor-banjo fret reference
+const STRINGNAME=["G","D","A","E"]; // index 0..3 low->high
+function mapFrets(notes, mode){
+  const maxFret = mode==="first"?9:19;
+  const sounding = notes.filter(n=>!n.rest);
+  if(!sounding.length) return notes.map(()=>null);
+  // choose octave shift so most notes are playable & low
+  let bestShift=0,bestScore=-1e9;
+  for(let sh=-2;sh<=2;sh++){
+    let ok=0,lowsum=0;
+    for(const n of sounding){const m=n.midi+12*sh; let best=99;
+      for(let st=0;st<4;st++){const f=m-OPEN[st]; if(f>=0&&f<=maxFret) best=Math.min(best,f);}
+      if(best<99){ok++; lowsum+=best;}
+    }
+    const score=ok*1000 - lowsum;
+    if(score>bestScore){bestScore=score;bestShift=sh;}
+  }
+  // Viterbi over candidate (string,fret) per note
+  const cand = sounding.map(n=>{
+    const m=n.midi+12*bestShift; const cs=[];
+    for(let st=0;st<4;st++){const f=m-OPEN[st]; if(f>=0&&f<=maxFret) cs.push({st,f});}
+    return cs.length?cs:[{st:0,f:0}];
+  });
+  const cost=c=> c.f + (c.f>7?(c.f-7)*4:0);
+  const trans=(a,b)=> Math.abs(a.f-b.f)*0.6 + (a.st!==b.st?1.2:0) + Math.abs(a.st-b.st)*0.4;
+  let prev=cand[0].map(c=>({c,tot:cost(c),path:[c]}));
+  for(let k=1;k<cand.length;k++){
+    prev=cand[k].map(c=>{
+      let best=null;
+      for(const p of prev){const t=p.tot+trans(p.c,c)+cost(c); if(!best||t<best.tot) best={c,tot:t,path:p.path.concat([c])};}
+      return best;
+    });
+  }
+  const chosen=prev.reduce((a,b)=>a.tot<b.tot?a:b).path;
+  // splice back, leaving rests as null
+  const out=[]; let j=0;
+  for(const n of notes) out.push(n.rest?null:chosen[j++]);
+  return out;
+}
+
+/* ---------- STATE ---------- */
+let tune=null, frets=null, phrases=null, curPhrase=0, scope="phrase";
+let playing=false, repCount=0, synth=null, timers=[];
+const $=id=>document.getElementById(id);
+
+function buildSelect(){
+  const sel=$("tuneSelect");
+  sel.innerHTML=Object.entries(TUNES).map(([k,t])=>`<option value="${k}">${t.title}</option>`).join("");
+}
+function load(abc, info){
+  $("abcErr").textContent="";
+  let parsed;
+  try{ parsed=parseABC(abc); }catch(e){ $("abcErr").textContent="Couldn't parse that ABC: "+e.message; return; }
+  if(!parsed.bars.length){ $("abcErr").textContent="No notes found — check the ABC body."; return; }
+  tune=parsed;
+  frets=mapFrets(tune.notes, $("posMode").value);
+  $("tuneTitle").textContent=info?info.title:(tune.title||"Tune");
+  $("tuneMeta").textContent=info?info.meta:(tune.meter+" · "+tune.key);
+  $("starterTag").style.display=(info&&info.starter)?"inline-block":"none";
+  buildPhrases(); curPhrase=0; repCount=0; $("repCount").textContent="0";
+  renderTab(); renderNeck(); updatePos();
+}
+function buildPhrases(){
+  const per=+$("phraseLen").value;
+  phrases=[];
+  for(let i=0;i<tune.bars.length;i+=per) phrases.push({bars:tune.bars.slice(i,i+per)});
+}
+function noteIdxForBars(bars){ return bars.flat(); }
+
+/* render tab */
+function renderTab(){
+  const row=$("tabRow"); row.innerHTML="";
+  if(!tune||!phrases) return;
+  // flatten every bar, remembering which phrase it belongs to
+  const flat=[];
+  phrases.forEach((ph,pi)=>ph.bars.forEach(bar=>flat.push({bar,pi})));
+  // decide notes-per-line from available width so columns stay readable
+  const avail=Math.max(220,(row.clientWidth||700)-30);   // minus the E/A/D/G gutter
+  const TARGET=42;                                        // ~px per note before wrapping
+  const cap=Math.max(4,Math.floor(avail/TARGET));         // max notes per line
+  // greedy-pack bars into lines, never splitting a bar
+  const lines=[]; let cur=[],n=0;
+  flat.forEach(it=>{ const len=Math.max(1,it.bar.length);
+    if(cur.length && n+len>cap){ lines.push(cur); cur=[]; n=0; }
+    cur.push(it); n+=len; });
+  if(cur.length) lines.push(cur);
+  // render each line: [E/A/D/G labels][bars]
+  lines.forEach(line=>{
+    const ld=document.createElement("div"); ld.className="tabline";
+    const lbl=document.createElement("div"); lbl.className="stringlabels";
+    lbl.innerHTML="<div class='lane'>E</div><div class='lane'>A</div><div class='lane'>D</div><div class='lane'>G</div>";
+    ld.appendChild(lbl);
+    const wrap=document.createElement("div"); wrap.className="barswrap";
+    line.forEach((it,bi)=>{
+      const bdiv=document.createElement("div"); bdiv.className="barcol"+(bi===line.length-1?" lastbar":"");
+      bdiv.style.flex=Math.max(1,it.bar.length)+" 1 0";   // bars share line width by note count
+      it.bar.forEach(ni=>{
+        const fr=frets[ni];
+        const col=document.createElement("div");
+        col.className="notecol"+(it.pi===curPhrase?" inphrase":"");
+        col.dataset.n=ni;
+        for(let lane=3;lane>=0;lane--){
+          const cell=document.createElement("div"); cell.className="lane";
+          if(fr&&fr.st===lane){const m=document.createElement("span");m.className="fretmark";m.textContent=fr.f;cell.appendChild(m);}
+          else cell.innerHTML="<span style='opacity:.25'>·</span>";
+          col.appendChild(cell);
+        }
+        col.onclick=()=>{curPhrase=it.pi;scope="phrase";syncScope();renderTab();updatePos();};
+        bdiv.appendChild(col);
+      });
+      wrap.appendChild(bdiv);
+    });
+    ld.appendChild(wrap);
+    row.appendChild(ld);
+  });
+}
+/* render neck diagram */
+function renderNeck(){
+  const svg=$("neck"); const W=900,H=118, fretsN=12, padL=44, padR=14;
+  const usable=W-padL-padR, fw=usable/fretsN;
+  let g=`<rect x="0" y="0" width="${W}" height="${H}" fill="#2a1c0e" rx="8"/>`;
+  // nut
+  g+=`<rect x="${padL-6}" y="10" width="6" height="${H-20}" fill="#e9dcc0"/>`;
+  for(let f=1;f<=fretsN;f++){const x=padL+fw*f; g+=`<line x1="${x}" y1="10" x2="${x}" y2="${H-10}" stroke="#8a7a55" stroke-width="2"/>`;
+    g+=`<text x="${x-fw/2}" y="${H-1}" fill="#7a6a48" font-size="9" text-anchor="middle" font-family="Spectral">${f}</text>`;}
+  // inlays
+  [3,5,7].forEach(f=>{const x=padL+fw*f-fw/2; g+=`<circle cx="${x}" cy="${H/2}" r="4" fill="#5a4a2e"/>`;});
+  // strings (E A D G top->bottom)
+  const order=[3,2,1,0]; const ys=order.map((_,k)=>20+k*((H-30)/3));
+  order.forEach((st,k)=>{ g+=`<line x1="${padL}" y1="${ys[k]}" x2="${W-padR}" y2="${ys[k]}" stroke="#d8c79e" stroke-width="${1+k*0.4}"/>`;
+    g+=`<text x="${padL-12}" y="${ys[k]+4}" fill="#e9dcc0" font-size="12" text-anchor="middle" font-family="Fraunces">${STRINGNAME[st]}</text>`;});
+  g+=`<g id="finger"></g>`;
+  svg.innerHTML=g; svg._ys=ys; svg._order=order; svg._geo={padL,fw};
+}
+function lightNeck(fr){
+  const svg=$("neck"); const fg=svg.querySelector("#finger"); if(!fg)return;
+  if(!fr){fg.innerHTML="";return;}
+  const k=svg._order.indexOf(fr.st); const y=svg._ys[k];
+  const {padL,fw}=svg._geo;
+  const x = fr.f===0? padL-3 : padL+fw*fr.f-fw/2;
+  fg.innerHTML=`<circle cx="${x}" cy="${y}" r="9" fill="#e7b34a" stroke="#fff" stroke-width="1.5"/>`+
+    (fr.f===0?`<text x="${x}" y="${y+3}" font-size="9" text-anchor="middle" fill="#231400" font-family="Spectral">0</text>`:"");
+}
+
+/* playback */
+function tempoSecs(){const bpm=+$("tempo").value; return (60/bpm)/2;} // per eighth (unit=1/8 => dur in eighths)
+function activeNoteIdxs(){
+  if(scope==="phrase") return noteIdxForBars(phrases[curPhrase].bars);
+  if(scope==="part"){ // split tune in halves as A/B
+    const half=Math.ceil(phrases.length/2);
+    const grp = curPhrase<half? phrases.slice(0,half):phrases.slice(half);
+    return grp.flatMap(p=>noteIdxForBars(p.bars));
+  }
+  return tune.notes.map((_,i)=>i);
+}
+async function startLoop(){
+  if(!synth){ await Tone.start(); synth=new Tone.PluckSynth({attackNoise:1,dampening:3200,resonance:0.92}).toDestination(); synth.volume.value=-4; }
+  playing=true; $("play").textContent="■ Stop"; $("play").classList.add("stop");
+  loopOnce();
+}
+function loopOnce(){
+  clearTimers();
+  const idxs=activeNoteIdxs();
+  const eighth=tempoSecs();
+  let t=0;
+  idxs.forEach(ni=>{
+    const n=tune.notes[ni], fr=frets[ni];
+    const durEighths = n.dur/0.5; // dur is in whole-note fractions; 0.5==eighth
+    const secs=durEighths*eighth;
+    if(!n.rest){
+      const when=t;
+      timers.push(setTimeout(()=>{ try{synth.triggerAttackRelease(Tone.Frequency(n.midi,"midi"),Math.min(secs*0.95,0.6));}catch(e){} highlight(ni,fr);}, when*1000));
+    }
+    t+=secs;
+  });
+  timers.push(setTimeout(()=>{ clearHighlight();
+    if(!playing)return;
+    repCount++; $("repCount").textContent=repCount;
+    if($("ramp").checked && repCount%3===0){const tp=$("tempo"); tp.value=Math.min(160,+tp.value+4); updateTempoLabel();}
+    if($("dadMode").checked){const goal=+$("goalReps").value; $("goalFill").style.width=Math.min(100,repCount/goal*100)+"%";
+      if(repCount>=goal){ stopLoop(); flashDone(); return; } }
+    loopOnce();
+  }, t*1000+120));
+}
+function stopLoop(){ playing=false; clearTimers(); clearHighlight(); $("play").textContent="▶ Loop"; $("play").classList.remove("stop"); }
+function clearTimers(){ timers.forEach(clearTimeout); timers=[]; }
+function highlight(ni,fr){
+  document.querySelectorAll(".notecol.on").forEach(e=>e.classList.remove("on"));
+  const el=document.querySelector(`.notecol[data-n="${ni}"]`); if(el){el.classList.add("on"); el.scrollIntoView({block:"nearest",behavior:"smooth"});}
+  lightNeck(fr);
+}
+function clearHighlight(){ document.querySelectorAll(".notecol.on").forEach(e=>e.classList.remove("on")); lightNeck(null); }
+function flashDone(){ const b=$("repCount"); b.textContent="✓"; setTimeout(()=>{b.textContent=repCount;},1400); }
+
+/* ui wiring */
+function updatePos(){
+  if(scope==="phrase") $("posLabel").textContent=`Phrase ${curPhrase+1} / ${phrases.length}`;
+  else if(scope==="part") $("posLabel").textContent = curPhrase<Math.ceil(phrases.length/2)?"Part A":"Part B";
+  else $("posLabel").textContent="Whole tune";
+}
+function updateTempoLabel(){const bpm=+$("tempo").value; $("tempoVal").textContent=`${bpm} bpm · ${Math.round(bpm/120*100)}%`;}
+function syncScope(){ document.querySelectorAll("#scopeSeg button").forEach(b=>b.classList.toggle("sel",b.dataset.scope===scope)); }
+
+$("tuneSelect").onchange=e=>{const t=TUNES[e.target.value]; load(t.abc,t); if(playing)stopLoop();};
+$("pasteToggle").onclick=()=>$("pasteBox").classList.toggle("show");
+$("loadAbc").onclick=()=>{ const v=$("abcInput").value.trim(); if(v){load(v,null); if(playing)stopLoop();} };
+
+/* ---------- PHOTO -> ABC (vision OMR) ---------- */
+$("omrBtn").onclick=()=>$("omrFile").click();
+$("omrFile").onchange=e=>{ if(e.target.files[0]) transcribePhoto(e.target.files[0]); e.target.value=""; };
+async function transcribePhoto(file){
+  const status=$("omrStatus"); $("pasteBox").classList.add("show");
+  status.style.color="var(--ink2)"; status.textContent="Preparing the image…";
+  status.scrollIntoView({behavior:"smooth",block:"center"});
+  $("omrBtn").disabled=true;
+  try{
+    // Downscale client-side: keeps payloads under Vercel's request limit and speeds things up.
+    const { b64, media } = await shrinkImage(file, 1600, 0.85);
+    status.textContent="Reading the dots… (this can take a few seconds)";
+    let resp;
+    try{
+      resp=await fetch("/api/transcribe",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({image:b64, mediaType:media})});
+    }catch(netErr){
+      throw new Error("Couldn't reach /api/transcribe. If you're opening the file directly (not on your Vercel URL), the photo feature can't work — it needs the deployed function.");
+    }
+    const ct=resp.headers.get("content-type")||"";
+    if(!ct.includes("application/json")){
+      const head=(await resp.text()).slice(0,80);
+      throw new Error(`/api/transcribe returned ${resp.status} (not JSON). Check the api/ folder deployed and ANTHROPIC_API_KEY is set in Vercel. [${head}]`);
+    }
+    const data=await resp.json();
+    if(data.error) throw new Error(data.error);
+    let abc=(data.abc||"").trim();
+    if(!abc||!/[A-Ga-g]/.test(abc)) throw new Error("No notes came back — try a flatter, straight-on, well-lit photo of a single melody line.");
+    $("abcInput").value=abc;
+    load(abc,null); if(playing)stopLoop();
+    status.style.color="var(--ox)";
+    status.innerHTML="<b>Transcribed.</b> OMR is never perfect — hit ▶ and <b>listen</b>, then fix any wrong notes in the ABC above and press Load again.";
+  }catch(e){ status.style.color="var(--ox)"; status.textContent="Couldn't transcribe: "+e.message; }
+  $("omrBtn").disabled=false;
+}
+// Decode -> downscale to maxSide -> JPEG base64 (drops file size dramatically).
+function shrinkImage(file, maxSide, quality){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let {width:w,height:h}=img;
+      const scale=Math.min(1, maxSide/Math.max(w,h));
+      w=Math.round(w*scale); h=Math.round(h*scale);
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      const ctx=c.getContext("2d"); ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      const dataUrl=c.toDataURL("image/jpeg", quality);
+      resolve({ b64: dataUrl.split(",")[1], media: "image/jpeg" });
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error("couldn't read that image file")); };
+    img.src=url;
+  });
+}
+$("posMode").onchange=()=>{ if(tune){frets=mapFrets(tune.notes,$("posMode").value); renderTab();} };
+$("phraseLen").onchange=()=>{ if(tune){buildPhrases(); curPhrase=0; renderTab(); updatePos();} };
+$("prevPhrase").onclick=()=>{ curPhrase=Math.max(0,curPhrase-1); renderTab(); updatePos(); if(playing){stopLoop();} };
+$("nextPhrase").onclick=()=>{ curPhrase=Math.min(phrases.length-1,curPhrase+1); renderTab(); updatePos(); if(playing){stopLoop();} };
+document.querySelectorAll("#scopeSeg button").forEach(b=>b.onclick=()=>{scope=b.dataset.scope;syncScope();updatePos(); if(playing)stopLoop();});
+$("tempo").oninput=updateTempoLabel;
+$("play").onclick=()=>{ if(!tune)return; playing?stopLoop():startLoop(); };
+
+/* init */
+let _rtmr; window.addEventListener("resize",()=>{ clearTimeout(_rtmr); _rtmr=setTimeout(()=>{ if(tune) renderTab(); },150); });
+buildSelect(); updateTempoLabel(); load(TUNES.warmup.abc,TUNES.warmup);
+</script>
